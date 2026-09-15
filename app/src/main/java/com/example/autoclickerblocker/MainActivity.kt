@@ -33,7 +33,10 @@ class MainActivity : ComponentActivity() {
         var appEnabled by remember { mutableStateOf(prefs.getBoolean("triggerApp", false)) }
         var target by remember { mutableStateOf(prefs.getString("target", "") ?: "") }
         var appDuration by remember { mutableStateOf(prefs.getLong("appBlockDuration", 30000).toString()) }
-        var appRadius by remember { mutableStateOf(prefs.getFloat("appBlockRadius", 150f).toString()) }
+        var appRadius by remember { mutableStateOf(prefs.getFloat("appBlockRadius", 0f).toString()) }
+        var topPercent by remember { mutableStateOf(prefs.getFloat("blockTopPercent", 76f).toString()) }
+        var relaunchOnExit by remember { mutableStateOf(prefs.getBoolean("relaunchOnExit", true)) }
+        var resumeClicker by remember { mutableStateOf(prefs.getBoolean("resumeClickerAfterBlock", true)) }
 
         var timeEnabled by remember { mutableStateOf(prefs.getBoolean("triggerTime", false)) }
         var hour by remember { mutableStateOf(prefs.getInt("hour", 18).toString()) }
@@ -63,7 +66,10 @@ class MainActivity : ComponentActivity() {
                 .putBoolean("triggerApp", appEnabled)
                 .putString("target", target)
                 .putLong("appBlockDuration", appDuration.toLongOrNull()?.coerceAtLeast(100) ?: 30000)
-                .putFloat("appBlockRadius", appRadius.toFloatOrNull()?.coerceAtLeast(1f) ?: 150f)
+                .putFloat("appBlockRadius", appRadius.toFloatOrNull()?.coerceAtLeast(0f) ?: 0f)
+                .putFloat("blockTopPercent", topPercent.toFloatOrNull()?.coerceIn(0f, 100f) ?: 76f)
+                .putBoolean("relaunchOnExit", relaunchOnExit)
+                .putBoolean("resumeClickerAfterBlock", resumeClicker)
                 .putBoolean("triggerTime", timeEnabled)
                 .putInt("hour", hour.toIntOrNull()?.coerceIn(0, 23) ?: 18)
                 .putInt("minute", minute.toIntOrNull()?.coerceIn(0, 59) ?: 0)
@@ -77,7 +83,10 @@ class MainActivity : ComponentActivity() {
                 appEnabled,
                 target,
                 appDuration.toLongOrNull() ?: 30000,
-                appRadius.toFloatOrNull() ?: 150f
+                appRadius.toFloatOrNull() ?: 0f,
+                topPercent.toFloatOrNull() ?: 76f,
+                relaunchOnExit,
+                resumeClicker
             )
             ClickAccessibilityService.instance?.configureTimeTrigger(
                 timeDuration.toLongOrNull() ?: 300000,
@@ -89,7 +98,7 @@ class MainActivity : ComponentActivity() {
         }
 
         Scaffold(
-            topBar = { TopAppBar(title = { Text("AutoClickerBlocker v5") }) }
+            topBar = { TopAppBar(title = { Text("AutoClickerBlocker v6") }) }
         ) { pad ->
             Box(Modifier.padding(pad)) {
                 LazyColumn(
@@ -159,7 +168,7 @@ class MainActivity : ComponentActivity() {
                             randomRadius, { randomRadius = it },
                             label = { Text("ランダム範囲 半径(px) / 0=固定") }
                         )
-                        Text("複数マーカーを登録すると、順番にクリックします。各クリック位置は指定半径内でランダム化されます。")
+                        Text("複数マーカーを登録すると、順番にクリックします。")
                     }
 
                     itemsIndexed(points) { i, p ->
@@ -168,7 +177,11 @@ class MainActivity : ComponentActivity() {
 
                     item {
                         HorizontalDivider()
-                        Text("📱 アプリ起動トリガー", style = MaterialTheme.typography.titleLarge)
+                        Text("🔄 アプリ復帰", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "対象アプリが落ちたら再起動し、上側を封鎖してからクリックを再開します。",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                         Row {
                             Checkbox(appEnabled, { appEnabled = it })
                             Text("有効")
@@ -177,13 +190,25 @@ class MainActivity : ComponentActivity() {
                             target, { target = it },
                             label = { Text("対象 package 名") }
                         )
+                        Row {
+                            Checkbox(relaunchOnExit, { relaunchOnExit = it })
+                            Text("終了・落ちを検知したら再起動")
+                        }
+                        Row {
+                            Checkbox(resumeClicker, { resumeClicker = it })
+                            Text("封鎖解除後にクリッカー再開")
+                        }
                         OutlinedTextField(
-                            appRadius, { appRadius = it },
-                            label = { Text("無効化範囲 半径(px)") }
+                            topPercent, { topPercent = it },
+                            label = { Text("上から封鎖する高さ (%)  0=円") }
                         )
                         OutlinedTextField(
                             appDuration, { appDuration = it },
-                            label = { Text("無効化時間(ms)") }
+                            label = { Text("封鎖時間(ms)") }
+                        )
+                        OutlinedTextField(
+                            appRadius, { appRadius = it },
+                            label = { Text("円封鎖半径(px)  高さ0% のとき") }
                         )
 
                         HorizontalDivider()
@@ -192,38 +217,18 @@ class MainActivity : ComponentActivity() {
                             Checkbox(timeEnabled, { timeEnabled = it })
                             Text("有効")
                         }
-                        OutlinedTextField(
-                            hour, { hour = it },
-                            label = { Text("時 (0-23)") }
-                        )
-                        OutlinedTextField(
-                            minute, { minute = it },
-                            label = { Text("分 (0-59)") }
-                        )
-                        OutlinedTextField(
-                            timeRadius, { timeRadius = it },
-                            label = { Text("無効化範囲 半径(px)") }
-                        )
-                        OutlinedTextField(
-                            timeDuration, { timeDuration = it },
-                            label = { Text("無効化時間(ms)") }
-                        )
-
-                        Text(
-                            "アプリ起動と指定時刻は、範囲・無効化時間を完全に別々に設定できます。",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        OutlinedTextField(hour, { hour = it }, label = { Text("時 (0-23)") })
+                        OutlinedTextField(minute, { minute = it }, label = { Text("分 (0-59)") })
+                        OutlinedTextField(timeRadius, { timeRadius = it }, label = { Text("無効化範囲 半径(px)") })
+                        OutlinedTextField(timeDuration, { timeDuration = it }, label = { Text("無効化時間(ms)") })
 
                         Button(onClick = { save() }) { Text("設定を保存") }
-
                         Button(onClick = {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }) { Text("アクセシビリティ設定") }
-
                         Button(onClick = {
                             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
                         }) { Text("オーバーレイ権限設定") }
-
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             Button(onClick = {
                                 startActivity(
@@ -232,7 +237,7 @@ class MainActivity : ComponentActivity() {
                                         Uri.parse("package:$packageName")
                                     )
                                 )
-                            }) { Text("正確なアラームの権限設定（指定時刻トリガーに必要）") }
+                            }) { Text("正確なアラームの権限設定") }
                         }
 
                         HorizontalDivider()
