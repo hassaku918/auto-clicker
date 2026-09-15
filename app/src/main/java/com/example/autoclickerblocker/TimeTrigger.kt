@@ -61,12 +61,17 @@ class TimeTriggerReceiver : BroadcastReceiver() {
         if (!prefs.getBoolean("triggerTime", false)) return
 
         val duration = prefs.getLong("timeBlockDuration", 300_000L)
-        val radius = prefs.getFloat("timeBlockRadius", 300f)
+        val radius = prefs.getFloat("timeBlockRadius", 0f)
+        val yPercent = prefs.getFloat("timeBlockYPercent", 0f)
+        val heightPercent = prefs.getFloat("timeBlockHeightPercent", 76f)
 
-        ClickAccessibilityService.instance?.configureTimeTrigger(duration, radius)
+        ClickAccessibilityService.instance?.configureTimeTrigger(
+            duration,
+            radius,
+            yPercent,
+            heightPercent
+        )
         ClickAccessibilityService.instance?.triggerTimeBlock()
-
-        // Schedule the next occurrence independently of the app-trigger settings.
         TimeTrigger.schedule(context)
     }
 }
