@@ -28,7 +28,6 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun Screen() {
         var interval by remember { mutableStateOf(prefs.getLong("interval", 500).toString()) }
-        var duration by remember { mutableStateOf(prefs.getLong("duration", 30000).toString()) }
         var randomRadius by remember { mutableStateOf(prefs.getFloat("randomRadius", 0f).toString()) }
 
         var appEnabled by remember { mutableStateOf(prefs.getBoolean("triggerApp", false)) }
@@ -60,16 +59,11 @@ class MainActivity : ComponentActivity() {
         fun save() {
             prefs.edit()
                 .putLong("interval", interval.toLongOrNull()?.coerceAtLeast(50) ?: 500)
-                .putLong("duration", duration.toLongOrNull()?.coerceAtLeast(100) ?: 30000)
                 .putFloat("randomRadius", randomRadius.toFloatOrNull()?.coerceAtLeast(0f) ?: 0f)
-
-                // App-launch trigger settings
                 .putBoolean("triggerApp", appEnabled)
                 .putString("target", target)
                 .putLong("appBlockDuration", appDuration.toLongOrNull()?.coerceAtLeast(100) ?: 30000)
                 .putFloat("appBlockRadius", appRadius.toFloatOrNull()?.coerceAtLeast(1f) ?: 150f)
-
-                // Time trigger settings — intentionally independent
                 .putBoolean("triggerTime", timeEnabled)
                 .putInt("hour", hour.toIntOrNull()?.coerceIn(0, 23) ?: 18)
                 .putInt("minute", minute.toIntOrNull()?.coerceIn(0, 59) ?: 0)
@@ -153,13 +147,13 @@ class MainActivity : ComponentActivity() {
                         }
 
                         Text("クリッカー", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "停止するまで動き続けます。メニューの「クリッカー停止」か通知の停止で終了です。",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                         OutlinedTextField(
                             interval, { interval = it },
                             label = { Text("クリック間隔 (ms)") }
-                        )
-                        OutlinedTextField(
-                            duration, { duration = it },
-                            label = { Text("実行時間 (ms)") }
                         )
                         OutlinedTextField(
                             randomRadius, { randomRadius = it },

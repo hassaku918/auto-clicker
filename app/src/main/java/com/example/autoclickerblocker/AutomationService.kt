@@ -21,7 +21,7 @@ class AutomationService:Service(){
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         startForeground(10,NotificationCompat.Builder(this,"clicker")
             .setContentTitle("AutoClickerBlocker")
-            .setContentText("オートクリック実行中")
+            .setContentText("自動クリック実行中（停止するまで）")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .addAction(android.R.drawable.ic_media_pause,"停止",stop).build())
     }
@@ -32,12 +32,10 @@ class AutomationService:Service(){
             running=true
             val prefs=getSharedPreferences("settings",MODE_PRIVATE)
             val interval=prefs.getLong("interval",500L).coerceAtLeast(50)
-            val duration=prefs.getLong("duration",30000L).coerceAtLeast(100)
             val points=PointStore.load(prefs)
             worker=Thread{
-                val end=System.currentTimeMillis()+duration
                 var i=0
-                while(running && System.currentTimeMillis()<end){
+                while(running){
                     val list=if(points.isEmpty()) listOf(ClickPoint(540f,1200f)) else points
                     val p=list[i%list.size]
                     val angle=Random.nextDouble(0.0,Math.PI*2)
@@ -48,7 +46,7 @@ class AutomationService:Service(){
                     i++
                     try{Thread.sleep(interval)}catch(_:InterruptedException){break}
                 }
-                stopSelf()
+                if(running) stopSelf()
             }.also{it.start()}
         }
         return START_NOT_STICKY
