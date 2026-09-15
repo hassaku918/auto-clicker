@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
         setContent { Screen() }
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun Screen() {
         var interval by remember { mutableStateOf(prefs.getLong("interval", 500).toString()) }
