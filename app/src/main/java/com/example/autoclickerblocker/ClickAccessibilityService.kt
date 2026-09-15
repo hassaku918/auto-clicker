@@ -19,6 +19,7 @@ class ClickAccessibilityService : AccessibilityService() {
     private var appBlockMs = 60_000L
     private var appBlockRadius = 250f
     private var blockTopPercent = 76f
+    private var blockYPercent = 0f
     private var relaunchOnExit = false
     private var resumeClickerAfterBlock = false
 
@@ -30,7 +31,8 @@ class ClickAccessibilityService : AccessibilityService() {
 
     private enum class BlockMode { NONE, BAND, CIRCLE }
     @Volatile private var blockMode = BlockMode.NONE
-    @Volatile private var activeBandPercent = 0f
+    @Volatile private var activeBandStart = 0f
+    @Volatile private var activeBandEnd = 0f
     @Volatile private var activeCircleRadius = 0f
 
     private var blocker: View? = null
@@ -44,6 +46,7 @@ class ClickAccessibilityService : AccessibilityService() {
         duration: Long,
         radius: Float,
         topPercent: Float,
+        yPercent: Float,
         relaunch: Boolean,
         resumeClicker: Boolean
     ) {
@@ -52,6 +55,7 @@ class ClickAccessibilityService : AccessibilityService() {
         appBlockMs = duration.coerceAtLeast(100L)
         appBlockRadius = radius.coerceAtLeast(0f)
         blockTopPercent = topPercent.coerceIn(0f, 100f)
+        blockYPercent = yPercent.coerceIn(0f, 100f)
         relaunchOnExit = relaunch
         resumeClickerAfterBlock = resumeClicker
     }
@@ -66,7 +70,7 @@ class ClickAccessibilityService : AccessibilityService() {
         val h = resources.displayMetrics.heightPixels.toFloat()
         return when (blockMode) {
             BlockMode.NONE -> false
-            BlockMode.BAND -> y <= h * (activeBandPercent / 100f)
+            BlockMode.BAND -> y >= activeBandStart && y <= activeBandEnd
             BlockMode.CIRCLE -> {
                 val dx = x - w / 2f
                 val dy = y - h / 2f
@@ -100,7 +104,7 @@ class ClickAccessibilityService : AccessibilityService() {
 
     private fun startRecoveryBlock() {
         if (blockTopPercent > 0f) {
-            blockTopBand(appBlockMs, blockTopPercent)
+            blockBand(appBlockMs, blockYPercent, blockTopPercent)
         } else {
             blockCircle(appBlockMs, appBlockRadius.coerceAtLeast(1f))
         }
@@ -135,18 +139,21 @@ class ClickAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun blockTopBand(ms: Long, percent: Float) {
+    private fun blockBand(ms: Long, yPercent: Float, heightPercent: Float) {
         handler.post {
             unblock()
-            activeBandPercent = percent
-            blockMode = BlockMode.BAND
             val v = object : View(this) {
                 override fun onTouchEvent(event: MotionEvent?): Boolean {
                     if (event == null) return true
-                    val limit = height * (percent / 100f)
-                    return event.y <= limit
+                    val start = height * (yPercent / 100f)
+                    val end = (start + height * (heightPercent / 100f)).coerceAtMost(height.toFloat())
+                    return event.y >= start && event.y <= end
                 }
             }
+            val h = resources.displayMetrics.heightPixels.toFloat()
+            activeBandStart = h * (yPercent / 100f)
+            activeBandEnd = (activeBandStart + h * (heightPercent / 100f)).coerceAtMost(h)
+            blockMode = BlockMode.BAND
             addBlocker(v, ms)
         }
     }
