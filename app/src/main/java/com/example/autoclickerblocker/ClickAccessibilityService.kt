@@ -25,6 +25,8 @@ class ClickAccessibilityService : AccessibilityService() {
 
     private var timeBlockMs = 60_000L
     private var timeBlockRadius = 250f
+    private var timeBlockYPercent = 0f
+    private var timeBlockHeightPercent = 0f
 
     private var lastPkg = ""
     private var lastRelaunchAt = 0L
@@ -60,9 +62,16 @@ class ClickAccessibilityService : AccessibilityService() {
         resumeClickerAfterBlock = resumeClicker
     }
 
-    fun configureTimeTrigger(duration: Long, radius: Float) {
+    fun configureTimeTrigger(
+        duration: Long,
+        radius: Float,
+        yPercent: Float,
+        heightPercent: Float
+    ) {
         timeBlockMs = duration.coerceAtLeast(100L)
-        timeBlockRadius = radius.coerceAtLeast(1f)
+        timeBlockRadius = radius.coerceAtLeast(0f)
+        timeBlockYPercent = yPercent.coerceIn(0f, 100f)
+        timeBlockHeightPercent = heightPercent.coerceIn(0f, 100f)
     }
 
     fun isBlocked(x: Float, y: Float): Boolean {
@@ -103,14 +112,8 @@ class ClickAccessibilityService : AccessibilityService() {
     }
 
     private fun startRecoveryBlock() {
-        if (blockTopPercent > 0f) {
-            blockBand(appBlockMs, blockYPercent, blockTopPercent)
-        } else {
-            blockCircle(appBlockMs, appBlockRadius.coerceAtLeast(1f))
-        }
-        if (resumeClickerAfterBlock) {
-            AutomationService.startClicker(this)
-        }
+        applyBlock(appBlockMs, blockYPercent, blockTopPercent, appBlockRadius)
+        if (resumeClickerAfterBlock) AutomationService.startClicker(this)
     }
 
     private fun relaunchTarget() {
@@ -122,21 +125,20 @@ class ClickAccessibilityService : AccessibilityService() {
     }
 
     fun triggerTimeBlock() {
-        blockCircle(timeBlockMs, timeBlockRadius)
-        if (resumeClickerAfterBlock) {
-            AutomationService.startClicker(this)
-        }
+        applyBlock(timeBlockMs, timeBlockYPercent, timeBlockHeightPercent, timeBlockRadius)
+        if (resumeClickerAfterBlock) AutomationService.startClicker(this)
+    }
+
+    private fun applyBlock(ms: Long, yPercent: Float, heightPercent: Float, radius: Float) {
+        if (heightPercent > 0f) blockBand(ms, yPercent, heightPercent)
+        else blockCircle(ms, radius.coerceAtLeast(1f))
     }
 
     fun click(x: Float, y: Float) {
         if (isBlocked(x, y)) return
         val path = Path().apply { moveTo(x, y) }
         val stroke = GestureDescription.StrokeDescription(path, 0, 30)
-        dispatchGesture(
-            GestureDescription.Builder().addStroke(stroke).build(),
-            null,
-            null
-        )
+        dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }
 
     private fun blockBand(ms: Long, yPercent: Float, heightPercent: Float) {
@@ -179,8 +181,7 @@ class ClickAccessibilityService : AccessibilityService() {
 
     private fun addBlocker(v: View, ms: Long) {
         val lp = WindowManager.LayoutParams(
-            -1,
-            -1,
+            -1, -1,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -197,19 +198,12 @@ class ClickAccessibilityService : AccessibilityService() {
         handler.post {
             blockMode = BlockMode.NONE
             blocker?.let {
-                runCatching {
-                    (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)
-                }
+                runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
                 blocker = null
             }
         }
     }
 
     override fun onInterrupt() {}
-
-    override fun onDestroy() {
-        unblock()
-        instance = null
-        super.onDestroy()
-    }
+    override fun onDestroy() { unblock(); instance = null; super.onDestroy() }
 }

@@ -1,7 +1,6 @@
 package com.example.autoclickerblocker
 
-import android.app.*
-import android.content.*
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -43,7 +42,9 @@ class MainActivity : ComponentActivity() {
         var hour by remember { mutableStateOf(prefs.getInt("hour", 18).toString()) }
         var minute by remember { mutableStateOf(prefs.getInt("minute", 0).toString()) }
         var timeDuration by remember { mutableStateOf(prefs.getLong("timeBlockDuration", 300000).toString()) }
-        var timeRadius by remember { mutableStateOf(prefs.getFloat("timeBlockRadius", 300f).toString()) }
+        var timeRadius by remember { mutableStateOf(prefs.getFloat("timeBlockRadius", 0f).toString()) }
+        var timeYPercent by remember { mutableStateOf(prefs.getFloat("timeBlockYPercent", 0f).toString()) }
+        var timeHeightPercent by remember { mutableStateOf(prefs.getFloat("timeBlockHeightPercent", 76f).toString()) }
 
         var points by remember { mutableStateOf(PointStore.load(prefs)) }
         var menuOpen by remember { mutableStateOf(false) }
@@ -52,9 +53,7 @@ class MainActivity : ComponentActivity() {
             MarkerOverlay.clear(this@MainActivity)
             points.forEachIndexed { i, p ->
                 MarkerOverlay.add(this@MainActivity, i, p) { idx, nx, ny ->
-                    points = points.toMutableList().also {
-                        it[idx] = it[idx].copy(x = nx, y = ny)
-                    }
+                    points = points.toMutableList().also { it[idx] = it[idx].copy(x = nx, y = ny) }
                     PointStore.save(prefs, points)
                 }
             }
@@ -76,38 +75,33 @@ class MainActivity : ComponentActivity() {
                 .putInt("hour", hour.toIntOrNull()?.coerceIn(0, 23) ?: 18)
                 .putInt("minute", minute.toIntOrNull()?.coerceIn(0, 59) ?: 0)
                 .putLong("timeBlockDuration", timeDuration.toLongOrNull()?.coerceAtLeast(100) ?: 300000)
-                .putFloat("timeBlockRadius", timeRadius.toFloatOrNull()?.coerceAtLeast(1f) ?: 300f)
+                .putFloat("timeBlockRadius", timeRadius.toFloatOrNull()?.coerceAtLeast(0f) ?: 0f)
+                .putFloat("timeBlockYPercent", timeYPercent.toFloatOrNull()?.coerceIn(0f, 100f) ?: 0f)
+                .putFloat("timeBlockHeightPercent", timeHeightPercent.toFloatOrNull()?.coerceIn(0f, 100f) ?: 76f)
                 .apply()
 
             PointStore.save(prefs, points)
-
             ClickAccessibilityService.instance?.configureAppTrigger(
-                appEnabled,
-                target,
+                appEnabled, target,
                 appDuration.toLongOrNull() ?: 30000,
                 appRadius.toFloatOrNull() ?: 0f,
                 topPercent.toFloatOrNull() ?: 76f,
                 yPercent.toFloatOrNull() ?: 0f,
-                relaunchOnExit,
-                resumeClicker
+                relaunchOnExit, resumeClicker
             )
             ClickAccessibilityService.instance?.configureTimeTrigger(
                 timeDuration.toLongOrNull() ?: 300000,
-                timeRadius.toFloatOrNull() ?: 300f
+                timeRadius.toFloatOrNull() ?: 0f,
+                timeYPercent.toFloatOrNull() ?: 0f,
+                timeHeightPercent.toFloatOrNull() ?: 76f
             )
-
             if (timeEnabled) TimeTrigger.schedule(this@MainActivity)
             else TimeTrigger.cancel(this@MainActivity)
         }
 
-        Scaffold(
-            topBar = { TopAppBar(title = { Text("AutoClickerBlocker v6") }) }
-        ) { pad ->
+        Scaffold(topBar = { TopAppBar(title = { Text("AutoClickerBlocker v6") }) }) { pad ->
             Box(Modifier.padding(pad)) {
-                LazyColumn(
-                    Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                LazyColumn(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
                         Button(onClick = { menuOpen = true }) { Text("☰ メニュー") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -120,8 +114,7 @@ class MainActivity : ComponentActivity() {
                             DropdownMenuItem(text = { Text("マーカー追加（画面をタップして配置）") }, onClick = {
                                 menuOpen = false
                                 RegisterOverlay.show(this@MainActivity) { tx, ty ->
-                                    val p = ClickPoint(tx, ty, randomRadius.toFloatOrNull() ?: 0f)
-                                    points = points + p
+                                    points = points + ClickPoint(tx, ty, randomRadius.toFloatOrNull() ?: 0f)
                                     PointStore.save(prefs, points)
                                     refreshMarkers()
                                 }
@@ -135,17 +128,13 @@ class MainActivity : ComponentActivity() {
                                 menuOpen = false
                             })
                         }
-
                         Text("クリッカー", style = MaterialTheme.typography.titleLarge)
-                        Text("停止するまで動き続けます。", style = MaterialTheme.typography.bodySmall)
                         OutlinedTextField(interval, { interval = it }, label = { Text("クリック間隔 (ms)") })
                         OutlinedTextField(randomRadius, { randomRadius = it }, label = { Text("ランダム範囲 半径(px) / 0=固定") })
                     }
-
                     itemsIndexed(points) { i, p ->
                         Text("マーカー ${i + 1}: (${p.x.toInt()}, ${p.y.toInt()})")
                     }
-
                     item {
                         HorizontalDivider()
                         Text("🔄 アプリ復帰", style = MaterialTheme.typography.titleLarge)
@@ -153,14 +142,8 @@ class MainActivity : ComponentActivity() {
                         OutlinedTextField(target, { target = it }, label = { Text("対象 package 名") })
                         Row { Checkbox(relaunchOnExit, { relaunchOnExit = it }); Text("終了・落ちを検知したら再起動") }
                         Row { Checkbox(resumeClicker, { resumeClicker = it }); Text("封鎖中も封鎖外をクリック") }
-                        OutlinedTextField(
-                            yPercent, { yPercent = it },
-                            label = { Text("Y値 (%)  封鎖の始点。上端=0") }
-                        )
-                        OutlinedTextField(
-                            topPercent, { topPercent = it },
-                            label = { Text("縦の長さ (%)  0=円封鎖") }
-                        )
+                        OutlinedTextField(yPercent, { yPercent = it }, label = { Text("Y値 (%)  封鎖の始点。上端=0") })
+                        OutlinedTextField(topPercent, { topPercent = it }, label = { Text("縦の長さ (%)  0=円封鎖") })
                         OutlinedTextField(appDuration, { appDuration = it }, label = { Text("封鎖時間(ms)") })
                         OutlinedTextField(appRadius, { appRadius = it }, label = { Text("円封鎖半径(px)") })
 
@@ -169,8 +152,10 @@ class MainActivity : ComponentActivity() {
                         Row { Checkbox(timeEnabled, { timeEnabled = it }); Text("有効") }
                         OutlinedTextField(hour, { hour = it }, label = { Text("時 (0-23)") })
                         OutlinedTextField(minute, { minute = it }, label = { Text("分 (0-59)") })
-                        OutlinedTextField(timeRadius, { timeRadius = it }, label = { Text("無効化範囲 半径(px)") })
-                        OutlinedTextField(timeDuration, { timeDuration = it }, label = { Text("無効化時間(ms)") })
+                        OutlinedTextField(timeYPercent, { timeYPercent = it }, label = { Text("Y値 (%)  封鎖の始点。上端=0") })
+                        OutlinedTextField(timeHeightPercent, { timeHeightPercent = it }, label = { Text("縦の長さ (%)  0=円封鎖") })
+                        OutlinedTextField(timeDuration, { timeDuration = it }, label = { Text("封鎖時間(ms)") })
+                        OutlinedTextField(timeRadius, { timeRadius = it }, label = { Text("円封鎖半径(px)") })
 
                         Button(onClick = { save() }) { Text("設定を保存") }
                         Button(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("アクセシビリティ設定") }
@@ -180,7 +165,6 @@ class MainActivity : ComponentActivity() {
                                 startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
                             }) { Text("正確なアラームの権限設定") }
                         }
-
                         HorizontalDivider()
                         Text("📦 プリセット", style = MaterialTheme.typography.titleLarge)
                         Button(onClick = { save(); PresetStore.save(prefs, "default", points) }) { Text("現在の設定を保存") }
