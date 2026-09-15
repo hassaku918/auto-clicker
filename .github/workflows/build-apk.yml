@@ -1,0 +1,40 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: JDK 17 をセットアップ
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK をセットアップ
+        uses: android-actions/setup-android@v3
+
+      - name: 必要なSDKパッケージをインストール
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle をセットアップ
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: デバッグAPKをビルド
+        run: gradle assembleDebug --no-daemon
+
+      - name: APKをアーティファクトとしてアップロード
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoClickerBlocker-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
