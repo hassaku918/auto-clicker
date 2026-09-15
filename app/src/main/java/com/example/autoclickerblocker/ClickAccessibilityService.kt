@@ -28,6 +28,11 @@ class ClickAccessibilityService : AccessibilityService() {
     private var lastPkg = ""
     private var lastRelaunchAt = 0L
 
+    private enum class BlockMode { NONE, BAND, CIRCLE }
+    @Volatile private var blockMode = BlockMode.NONE
+    @Volatile private var activeBandPercent = 0f
+    @Volatile private var activeCircleRadius = 0f
+
     private var blocker: View? = null
     private val handler = Handler(Looper.getMainLooper())
 
@@ -54,6 +59,20 @@ class ClickAccessibilityService : AccessibilityService() {
     fun configureTimeTrigger(duration: Long, radius: Float) {
         timeBlockMs = duration.coerceAtLeast(100L)
         timeBlockRadius = radius.coerceAtLeast(1f)
+    }
+
+    fun isBlocked(x: Float, y: Float): Boolean {
+        val w = resources.displayMetrics.widthPixels.toFloat()
+        val h = resources.displayMetrics.heightPixels.toFloat()
+        return when (blockMode) {
+            BlockMode.NONE -> false
+            BlockMode.BAND -> y <= h * (activeBandPercent / 100f)
+            BlockMode.CIRCLE -> {
+                val dx = x - w / 2f
+                val dy = y - h / 2f
+                sqrt(dx * dx + dy * dy) <= activeCircleRadius
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -86,9 +105,7 @@ class ClickAccessibilityService : AccessibilityService() {
             blockCircle(appBlockMs, appBlockRadius.coerceAtLeast(1f))
         }
         if (resumeClickerAfterBlock) {
-            handler.postDelayed({
-                AutomationService.startClicker(this)
-            }, appBlockMs)
+            AutomationService.startClicker(this)
         }
     }
 
@@ -102,9 +119,13 @@ class ClickAccessibilityService : AccessibilityService() {
 
     fun triggerTimeBlock() {
         blockCircle(timeBlockMs, timeBlockRadius)
+        if (resumeClickerAfterBlock) {
+            AutomationService.startClicker(this)
+        }
     }
 
     fun click(x: Float, y: Float) {
+        if (isBlocked(x, y)) return
         val path = Path().apply { moveTo(x, y) }
         val stroke = GestureDescription.StrokeDescription(path, 0, 30)
         dispatchGesture(
@@ -117,6 +138,8 @@ class ClickAccessibilityService : AccessibilityService() {
     private fun blockTopBand(ms: Long, percent: Float) {
         handler.post {
             unblock()
+            activeBandPercent = percent
+            blockMode = BlockMode.BAND
             val v = object : View(this) {
                 override fun onTouchEvent(event: MotionEvent?): Boolean {
                     if (event == null) return true
@@ -131,6 +154,8 @@ class ClickAccessibilityService : AccessibilityService() {
     private fun blockCircle(ms: Long, radius: Float) {
         handler.post {
             unblock()
+            activeCircleRadius = radius
+            blockMode = BlockMode.CIRCLE
             val v = object : View(this) {
                 override fun onTouchEvent(event: MotionEvent?): Boolean {
                     if (event == null) return true
@@ -163,6 +188,7 @@ class ClickAccessibilityService : AccessibilityService() {
 
     fun unblock() {
         handler.post {
+            blockMode = BlockMode.NONE
             blocker?.let {
                 runCatching {
                     (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)

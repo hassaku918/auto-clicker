@@ -42,7 +42,10 @@ class AutomationService:Service(){
                     val rad=if(p.randomRadius>0) Math.sqrt(Random.nextDouble())*p.randomRadius else 0.0
                     val x=(p.x+cos(angle)*rad).toFloat()
                     val y=(p.y+sin(angle)*rad).toFloat()
-                    ClickAccessibilityService.instance?.click(x,y)
+                    val svc=ClickAccessibilityService.instance
+                    if(svc==null || !svc.isBlocked(x,y)){
+                        svc?.click(x,y)
+                    }
                     i++
                     try{Thread.sleep(interval)}catch(_:InterruptedException){break}
                 }
