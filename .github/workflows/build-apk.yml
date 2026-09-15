@@ -5,6 +5,10 @@ on:
   push:
     branches: [ main ]
 
+env:
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,22 +22,22 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept SDK licenses
+      - name: Accept licenses and install platform
         run: |
-          mkdir -p "$ANDROID_HOME/licenses" "$ANDROID_SDK_ROOT/licenses"
-          for dir in "$ANDROID_HOME/licenses" "$ANDROID_SDK_ROOT/licenses"; do
-            echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$dir/android-sdk-license"
-            echo "84831b9409646161cecb09b7b4b3b8c5" > "$dir/android-sdk-preview-license"
-            echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> "$dir/android-sdk-license"
-          done
-          yes | sdkmanager --licenses >/dev/null || true
-
-      - name: Install SDK packages
-        run: |
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+          set -euo pipefail
+          SDKMAN=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)
+          if [ -z "$SDKMAN" ]; then
+            echo "sdkmanager not found under $ANDROID_HOME"
+            ls -la "$ANDROID_HOME" || true
+            exit 1
+          fi
+          echo "Using $SDKMAN"
+          mkdir -p "$ANDROID_HOME/licenses"
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license"
+          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> "$ANDROID_HOME/licenses/android-sdk-license"
+          echo "84831b9409646161cecb09b7b4b3b8c5" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          yes | "$SDKMAN" --licenses >/dev/null || true
+          "$SDKMAN" --install "platform-tools" "platforms;android-36" "build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
