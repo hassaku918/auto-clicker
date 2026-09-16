@@ -3,12 +3,16 @@ package com.example.autoclickerblocker
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.*
 import android.view.accessibility.AccessibilityEvent
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 class ClickAccessibilityService : AccessibilityService() {
@@ -28,6 +32,13 @@ class ClickAccessibilityService : AccessibilityService() {
     private var timeBlockYPercent = 0f
     private var timeBlockHeightPercent = 0f
 
+    private var colorUnblockEnabled = false
+    private var colorX = 0f
+    private var colorY = 0f
+    private var colorTarget = Color.WHITE
+    private var colorTol = 25
+    private var watchingColor = false
+
     private var lastPkg = ""
     private var lastRelaunchAt = 0L
 
@@ -39,8 +50,25 @@ class ClickAccessibilityService : AccessibilityService() {
 
     private var blocker: View? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val colorTick = object : Runnable {
+        override fun run() {
+            if (!watchingColor || !colorUnblockEnabled) return
+            sampleAndMaybeUnblock()
+            if (watchingColor) handler.postDelayed(this, 400L)
+        }
+    }
 
-    override fun onServiceConnected() { instance = this }
+    override fun onServiceConnected() {
+        instance = this
+        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        configureColorUnblock(
+            prefs.getBoolean("colorUnblock", false),
+            prefs.getFloat("colorX", 0f),
+            prefs.getFloat("colorY", 0f),
+            prefs.getInt("colorTarget", Color.WHITE),
+            prefs.getInt("colorTol", 25)
+        )
+    }
 
     fun configureAppTrigger(
         enabled: Boolean,
@@ -72,6 +100,14 @@ class ClickAccessibilityService : AccessibilityService() {
         timeBlockRadius = radius.coerceAtLeast(0f)
         timeBlockYPercent = yPercent.coerceIn(0f, 100f)
         timeBlockHeightPercent = heightPercent.coerceIn(0f, 100f)
+    }
+
+    fun configureColorUnblock(enabled: Boolean, x: Float, y: Float, color: Int, tol: Int) {
+        colorUnblockEnabled = enabled
+        colorX = x
+        colorY = y
+        colorTarget = color
+        colorTol = tol.coerceIn(0, 255)
     }
 
     fun isBlocked(x: Float, y: Float): Boolean {
@@ -191,11 +227,47 @@ class ClickAccessibilityService : AccessibilityService() {
             (getSystemService(WINDOW_SERVICE) as WindowManager).addView(v, lp)
             blocker = v
             handler.postDelayed({ unblock() }, ms)
+            startColorWatch()
         }
+    }
+
+    private fun startColorWatch() {
+        if (!colorUnblockEnabled) return
+        watchingColor = true
+        handler.removeCallbacks(colorTick)
+        handler.post(colorTick)
+    }
+
+    private fun sampleAndMaybeUnblock() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+            override fun onSuccess(screenshot: ScreenshotResult) {
+                val hb = screenshot.hardwareBuffer
+                val bmp = Bitmap.wrapHardwareBuffer(hb, screenshot.colorSpace) ?: return
+                val sw = if (bmp.config == Bitmap.Config.HARDWARE) {
+                    bmp.copy(Bitmap.Config.ARGB_8888, false)
+                } else bmp
+                val x = colorX.toInt().coerceIn(0, (sw.width - 1).coerceAtLeast(0))
+                val y = colorY.toInt().coerceIn(0, (sw.height - 1).coerceAtLeast(0))
+                val pixel = runCatching { sw.getPixel(x, y) }.getOrNull() ?: return
+                if (sw !== bmp) sw.recycle()
+                hb.close()
+                if (nearColor(pixel, colorTarget, colorTol)) unblock()
+            }
+            override fun onFailure(errorCode: Int) {}
+        })
+    }
+
+    private fun nearColor(a: Int, b: Int, tol: Int): Boolean {
+        return abs(Color.red(a) - Color.red(b)) <= tol &&
+            abs(Color.green(a) - Color.green(b)) <= tol &&
+            abs(Color.blue(a) - Color.blue(b)) <= tol
     }
 
     fun unblock() {
         handler.post {
+            watchingColor = false
+            handler.removeCallbacks(colorTick)
             blockMode = BlockMode.NONE
             blocker?.let {
                 runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
