@@ -36,17 +36,18 @@ class AutomationService:Service(){
             worker=Thread{
                 var i=0
                 while(running){
-                    val list=if(points.isEmpty()) listOf(ClickPoint(540f,1200f)) else points
-                    val p=list[i%list.size]
-                    val angle=Random.nextDouble(0.0,Math.PI*2)
-                    val rad=if(p.randomRadius>0) Math.sqrt(Random.nextDouble())*p.randomRadius else 0.0
-                    val x=(p.x+cos(angle)*rad).toFloat()
-                    val y=(p.y+sin(angle)*rad).toFloat()
-                    val svc=ClickAccessibilityService.instance
-                    if(svc==null || !svc.isBlocked(x,y)){
-                        svc?.click(x,y)
+                    if(points.isNotEmpty()){
+                        val p=points[i%points.size]
+                        val angle=Random.nextDouble(0.0,Math.PI*2)
+                        val rad=if(p.randomRadius>0) Math.sqrt(Random.nextDouble())*p.randomRadius else 0.0
+                        val x=(p.x+cos(angle)*rad).toFloat()
+                        val y=(p.y+sin(angle)*rad).toFloat()
+                        val svc=ClickAccessibilityService.instance
+                        if(svc!=null && !svc.isBlocked(x,y)){
+                            svc.click(x,y)
+                        }
+                        i++
                     }
-                    i++
                     try{Thread.sleep(interval)}catch(_:InterruptedException){break}
                 }
                 if(running) stopSelf()
