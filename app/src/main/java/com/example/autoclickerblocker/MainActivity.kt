@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -72,6 +73,8 @@ class MainActivity : ComponentActivity() {
         var colorTol by remember { mutableStateOf(prefs.getInt("colorTol", 25).toString()) }
         var points by remember { mutableStateOf(PointStore.load(prefs)) }
         var menuOpen by remember { mutableStateOf(false) }
+        var slotName by remember { mutableStateOf("save1") }
+        var slots by remember { mutableStateOf(SettingSlots.names(this@MainActivity)) }
 
         fun refreshMarkers() {
             MarkerOverlay.clear(this@MainActivity)
@@ -81,6 +84,33 @@ class MainActivity : ComponentActivity() {
                     PointStore.save(prefs, points)
                 }
             }
+        }
+
+        fun applyFromPrefs() {
+            interval = prefs.getLong("interval", 500).toString()
+            randomRadius = prefs.getFloat("randomRadius", 0f).toString()
+            appEnabled = prefs.getBoolean("triggerApp", false)
+            target = prefs.getString("target", "") ?: ""
+            appDuration = prefs.getLong("appBlockDuration", 30000).toString()
+            appRadius = prefs.getFloat("appBlockRadius", 0f).toString()
+            topPercent = prefs.getFloat("blockTopPercent", 76f).toString()
+            yPercent = prefs.getFloat("blockYPercent", 0f).toString()
+            relaunchOnExit = prefs.getBoolean("relaunchOnExit", true)
+            resumeClicker = prefs.getBoolean("resumeClickerAfterBlock", true)
+            timeEnabled = prefs.getBoolean("triggerTime", false)
+            hour = prefs.getInt("hour", 18).toString()
+            minute = prefs.getInt("minute", 0).toString()
+            timeDuration = prefs.getLong("timeBlockDuration", 300000).toString()
+            timeRadius = prefs.getFloat("timeBlockRadius", 0f).toString()
+            timeYPercent = prefs.getFloat("timeBlockYPercent", 0f).toString()
+            timeHeightPercent = prefs.getFloat("timeBlockHeightPercent", 76f).toString()
+            colorEnabled = prefs.getBoolean("colorUnblock", false)
+            colorX = prefs.getFloat("colorX", 0f).toString()
+            colorY = prefs.getFloat("colorY", 0f).toString()
+            colorHex = colorToHex(prefs.getInt("colorTarget", Color.WHITE))
+            colorTol = prefs.getInt("colorTol", 25).toString()
+            points = PointStore.load(prefs)
+            refreshMarkers()
         }
 
         fun save() {
@@ -178,10 +208,6 @@ class MainActivity : ComponentActivity() {
                         OutlinedTextField(timeRadius, { timeRadius = it }, label = { Text("円封鎖半径(px)") })
                         HorizontalDivider()
                         Text("🎨 色で封鎖解除", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            "Android 9 でも動かせます。先に「画面取得を許可」を押してください。再起動するたびに必要です。",
-                            style = MaterialTheme.typography.bodySmall
-                        )
                         Row { Checkbox(colorEnabled, { colorEnabled = it }); Text("有効") }
                         Button(onClick = {
                             val mpm = getSystemService(MediaProjectionManager::class.java)
@@ -205,9 +231,28 @@ class MainActivity : ComponentActivity() {
                             }) { Text("正確なアラームの権限設定") }
                         }
                         HorizontalDivider()
-                        Text("📦 プリセット", style = MaterialTheme.typography.titleLarge)
-                        Button(onClick = { save(); PresetStore.save(prefs, "default", points) }) { Text("現在の設定を保存") }
-                        Button(onClick = { points = PresetStore.load(prefs, "default"); refreshMarkers() }) { Text("保存した設定を読み込む") }
+                        Text("💾 セーブデータ", style = MaterialTheme.typography.titleLarge)
+                        Text("マーカー・間隔・封鎖・色解除まで一緒に保存します。", style = MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(slotName, { slotName = it }, label = { Text("セーブ名") })
+                        Button(onClick = {
+                            save()
+                            SettingSlots.save(this@MainActivity, slotName)
+                            slots = SettingSlots.names(this@MainActivity)
+                        }) { Text("この名前でセーブ") }
+                    }
+                    items(slots) { name ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = {
+                                SettingSlots.load(this@MainActivity, name)
+                                slotName = name
+                                applyFromPrefs()
+                                save()
+                            }) { Text("読込 $name") }
+                            Button(onClick = {
+                                SettingSlots.delete(this@MainActivity, name)
+                                slots = SettingSlots.names(this@MainActivity)
+                            }) { Text("削除") }
+                        }
                     }
                 }
             }
