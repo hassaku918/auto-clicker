@@ -137,7 +137,7 @@ class MainActivity : ComponentActivity() {
                 .putFloat("colorY", colorY.toFloatOrNull() ?: 0f)
                 .putInt("colorTarget", parsedColor)
                 .putInt("colorTol", colorTol.toIntOrNull()?.coerceIn(0, 255) ?: 25)
-                .apply()
+                .commit()
             PointStore.save(prefs, points)
             ClickAccessibilityService.instance?.configureAppTrigger(
                 appEnabled, target, appDuration.toLongOrNull() ?: 30000,
