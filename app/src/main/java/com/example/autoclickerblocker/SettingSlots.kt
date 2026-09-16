@@ -34,9 +34,9 @@ object SettingSlots {
                 is Boolean -> dst.putBoolean(k, v)
             }
         }
-        dst.apply()
+        dst.commit()
         val list = (names(context) + n).distinct()
-        src.edit().putString(LIST, list.joinToString(",")).apply()
+        src.edit().putString(LIST, list.joinToString(",")).commit()
     }
 
     fun load(context: Context, name: String) {
@@ -53,15 +53,15 @@ object SettingSlots {
                 is Boolean -> dst.putBoolean(k, v)
             }
         }
-        dst.apply()
+        dst.commit()
     }
 
     fun delete(context: Context, name: String) {
         val n = sanitize(name) ?: return
-        context.getSharedPreferences("slot_$n", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("slot_$n", Context.MODE_PRIVATE).edit().clear().commit()
         val left = names(context).filter { it != n }
         context.getSharedPreferences(SRC, Context.MODE_PRIVATE)
-            .edit().putString(LIST, left.joinToString(",")).apply()
+            .edit().putString(LIST, left.joinToString(",")).commit()
     }
 
     private fun sanitize(name: String): String? {
