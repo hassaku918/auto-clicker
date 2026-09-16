@@ -71,14 +71,8 @@ class ClickAccessibilityService : AccessibilityService() {
     }
 
     fun configureAppTrigger(
-        enabled: Boolean,
-        target: String,
-        duration: Long,
-        radius: Float,
-        topPercent: Float,
-        yPercent: Float,
-        relaunch: Boolean,
-        resumeClicker: Boolean
+        enabled: Boolean, target: String, duration: Long, radius: Float,
+        topPercent: Float, yPercent: Float, relaunch: Boolean, resumeClicker: Boolean
     ) {
         appTriggerEnabled = enabled
         appTargetPackage = target.trim()
@@ -90,12 +84,7 @@ class ClickAccessibilityService : AccessibilityService() {
         resumeClickerAfterBlock = resumeClicker
     }
 
-    fun configureTimeTrigger(
-        duration: Long,
-        radius: Float,
-        yPercent: Float,
-        heightPercent: Float
-    ) {
+    fun configureTimeTrigger(duration: Long, radius: Float, yPercent: Float, heightPercent: Float) {
         timeBlockMs = duration.coerceAtLeast(100L)
         timeBlockRadius = radius.coerceAtLeast(0f)
         timeBlockYPercent = yPercent.coerceIn(0f, 100f)
@@ -104,9 +93,7 @@ class ClickAccessibilityService : AccessibilityService() {
 
     fun configureColorUnblock(enabled: Boolean, x: Float, y: Float, color: Int, tol: Int) {
         colorUnblockEnabled = enabled
-        colorX = x
-        colorY = y
-        colorTarget = color
+        colorX = x; colorY = y; colorTarget = color
         colorTol = tol.coerceIn(0, 255)
     }
 
@@ -117,8 +104,7 @@ class ClickAccessibilityService : AccessibilityService() {
             BlockMode.NONE -> false
             BlockMode.BAND -> y >= activeBandStart && y <= activeBandEnd
             BlockMode.CIRCLE -> {
-                val dx = x - w / 2f
-                val dy = y - h / 2f
+                val dx = x - w / 2f; val dy = y - h / 2f
                 sqrt(dx * dx + dy * dy) <= activeCircleRadius
             }
         }
@@ -129,15 +115,8 @@ class ClickAccessibilityService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
         if (pkg == packageName || pkg.startsWith("com.android.systemui")) return
-
-        val prev = lastPkg
-        lastPkg = pkg
-
-        if (pkg == appTargetPackage) {
-            startRecoveryBlock()
-            return
-        }
-
+        val prev = lastPkg; lastPkg = pkg
+        if (pkg == appTargetPackage) { startRecoveryBlock(); return }
         if (relaunchOnExit && prev == appTargetPackage && pkg != appTargetPackage) {
             val now = System.currentTimeMillis()
             if (now - lastRelaunchAt > 2500L) {
@@ -173,8 +152,7 @@ class ClickAccessibilityService : AccessibilityService() {
     fun click(x: Float, y: Float) {
         if (isBlocked(x, y)) return
         val path = Path().apply { moveTo(x, y) }
-        val stroke = GestureDescription.StrokeDescription(path, 0, 30)
-        dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 30)).build(), null, null)
     }
 
     private fun blockBand(ms: Long, yPercent: Float, heightPercent: Float) {
@@ -204,10 +182,8 @@ class ClickAccessibilityService : AccessibilityService() {
             val v = object : View(this) {
                 override fun onTouchEvent(event: MotionEvent?): Boolean {
                     if (event == null) return true
-                    val cx = width / 2f
-                    val cy = height / 2f
-                    val dx = event.x - cx
-                    val dy = event.y - cy
+                    val cx = width / 2f; val cy = height / 2f
+                    val dx = event.x - cx; val dy = event.y - cy
                     return sqrt(dx * dx + dy * dy) <= radius
                 }
             }
@@ -217,10 +193,8 @@ class ClickAccessibilityService : AccessibilityService() {
 
     private fun addBlocker(v: View, ms: Long) {
         val lp = WindowManager.LayoutParams(
-            -1, -1,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            -1, -1, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
         runCatching {
@@ -239,20 +213,23 @@ class ClickAccessibilityService : AccessibilityService() {
     }
 
     private fun sampleAndMaybeUnblock() {
+        val grabbed = ScreenGrab.pixel(colorX.toInt(), colorY.toInt())
+        if (grabbed != null) {
+            if (nearColor(grabbed, colorTarget, colorTol)) unblock()
+            return
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
             override fun onSuccess(screenshot: ScreenshotResult) {
                 val hb = screenshot.hardwareBuffer
                 val bmp = Bitmap.wrapHardwareBuffer(hb, screenshot.colorSpace) ?: return
-                val sw = if (bmp.config == Bitmap.Config.HARDWARE) {
-                    bmp.copy(Bitmap.Config.ARGB_8888, false)
-                } else bmp
+                val sw = if (bmp.config == Bitmap.Config.HARDWARE) bmp.copy(Bitmap.Config.ARGB_8888, false) else bmp
                 val x = colorX.toInt().coerceIn(0, (sw.width - 1).coerceAtLeast(0))
                 val y = colorY.toInt().coerceIn(0, (sw.height - 1).coerceAtLeast(0))
-                val pixel = runCatching { sw.getPixel(x, y) }.getOrNull() ?: return
+                val pixel = runCatching { sw.getPixel(x, y) }.getOrNull()
                 if (sw !== bmp) sw.recycle()
                 hb.close()
-                if (nearColor(pixel, colorTarget, colorTol)) unblock()
+                if (pixel != null && nearColor(pixel, colorTarget, colorTol)) unblock()
             }
             override fun onFailure(errorCode: Int) {}
         })
