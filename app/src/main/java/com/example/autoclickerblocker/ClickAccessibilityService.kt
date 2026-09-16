@@ -115,8 +115,12 @@ class ClickAccessibilityService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
         if (pkg == packageName || pkg.startsWith("com.android.systemui")) return
-        val prev = lastPkg; lastPkg = pkg
-        if (pkg == appTargetPackage) { startRecoveryBlock(); return }
+        val prev = lastPkg
+        lastPkg = pkg
+        if (pkg == appTargetPackage) {
+            if (prev != appTargetPackage) startRecoveryBlock()
+            return
+        }
         if (relaunchOnExit && prev == appTargetPackage && pkg != appTargetPackage) {
             val now = System.currentTimeMillis()
             if (now - lastRelaunchAt > 2500L) {
