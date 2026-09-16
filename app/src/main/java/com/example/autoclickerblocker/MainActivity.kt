@@ -1,6 +1,7 @@
 package com.example.autoclickerblocker
 
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -21,6 +22,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { Screen() }
+    }
+
+    private fun parseColorOrWhite(raw: String): Int {
+        val t = raw.trim().removePrefix("#")
+        return runCatching { Color.parseColor("#" + t.padStart(6, '0').take(6)) }.getOrDefault(Color.WHITE)
+    }
+
+    private fun colorToHex(c: Int): String {
+        return String.format("#%06X", 0xFFFFFF and c)
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -46,6 +56,12 @@ class MainActivity : ComponentActivity() {
         var timeYPercent by remember { mutableStateOf(prefs.getFloat("timeBlockYPercent", 0f).toString()) }
         var timeHeightPercent by remember { mutableStateOf(prefs.getFloat("timeBlockHeightPercent", 76f).toString()) }
 
+        var colorEnabled by remember { mutableStateOf(prefs.getBoolean("colorUnblock", false)) }
+        var colorX by remember { mutableStateOf(prefs.getFloat("colorX", 0f).toString()) }
+        var colorY by remember { mutableStateOf(prefs.getFloat("colorY", 0f).toString()) }
+        var colorHex by remember { mutableStateOf(colorToHex(prefs.getInt("colorTarget", Color.WHITE))) }
+        var colorTol by remember { mutableStateOf(prefs.getInt("colorTol", 25).toString()) }
+
         var points by remember { mutableStateOf(PointStore.load(prefs)) }
         var menuOpen by remember { mutableStateOf(false) }
 
@@ -60,6 +76,7 @@ class MainActivity : ComponentActivity() {
         }
 
         fun save() {
+            val parsedColor = parseColorOrWhite(colorHex)
             prefs.edit()
                 .putLong("interval", interval.toLongOrNull()?.coerceAtLeast(50) ?: 500)
                 .putFloat("randomRadius", randomRadius.toFloatOrNull()?.coerceAtLeast(0f) ?: 0f)
@@ -78,6 +95,11 @@ class MainActivity : ComponentActivity() {
                 .putFloat("timeBlockRadius", timeRadius.toFloatOrNull()?.coerceAtLeast(0f) ?: 0f)
                 .putFloat("timeBlockYPercent", timeYPercent.toFloatOrNull()?.coerceIn(0f, 100f) ?: 0f)
                 .putFloat("timeBlockHeightPercent", timeHeightPercent.toFloatOrNull()?.coerceIn(0f, 100f) ?: 76f)
+                .putBoolean("colorUnblock", colorEnabled)
+                .putFloat("colorX", colorX.toFloatOrNull() ?: 0f)
+                .putFloat("colorY", colorY.toFloatOrNull() ?: 0f)
+                .putInt("colorTarget", parsedColor)
+                .putInt("colorTol", colorTol.toIntOrNull()?.coerceIn(0, 255) ?: 25)
                 .apply()
 
             PointStore.save(prefs, points)
@@ -94,6 +116,13 @@ class MainActivity : ComponentActivity() {
                 timeRadius.toFloatOrNull() ?: 0f,
                 timeYPercent.toFloatOrNull() ?: 0f,
                 timeHeightPercent.toFloatOrNull() ?: 76f
+            )
+            ClickAccessibilityService.instance?.configureColorUnblock(
+                colorEnabled,
+                colorX.toFloatOrNull() ?: 0f,
+                colorY.toFloatOrNull() ?: 0f,
+                parsedColor,
+                colorTol.toIntOrNull() ?: 25
             )
             if (timeEnabled) TimeTrigger.schedule(this@MainActivity)
             else TimeTrigger.cancel(this@MainActivity)
@@ -152,10 +181,28 @@ class MainActivity : ComponentActivity() {
                         Row { Checkbox(timeEnabled, { timeEnabled = it }); Text("有効") }
                         OutlinedTextField(hour, { hour = it }, label = { Text("時 (0-23)") })
                         OutlinedTextField(minute, { minute = it }, label = { Text("分 (0-59)") })
-                        OutlinedTextField(timeYPercent, { timeYPercent = it }, label = { Text("Y値 (%)  封鎖の始点。上端=0") })
+                        OutlinedTextField(timeYPercent, { timeYPercent = it }, label = { Text("Y値 (%)") })
                         OutlinedTextField(timeHeightPercent, { timeHeightPercent = it }, label = { Text("縦の長さ (%)  0=円封鎖") })
                         OutlinedTextField(timeDuration, { timeDuration = it }, label = { Text("封鎖時間(ms)") })
                         OutlinedTextField(timeRadius, { timeRadius = it }, label = { Text("円封鎖半径(px)") })
+
+                        HorizontalDivider()
+                        Text("🎨 色で封鎖解除", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "封鎖中に指定座標の色が目標色に近づいたら封鎖を解きます。Android 11 以上で動きます。",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Row { Checkbox(colorEnabled, { colorEnabled = it }); Text("有効") }
+                        OutlinedTextField(colorX, { colorX = it }, label = { Text("監視X (px)") })
+                        OutlinedTextField(colorY, { colorY = it }, label = { Text("監視Y (px)") })
+                        Button(onClick = {
+                            RegisterOverlay.show(this@MainActivity) { tx, ty ->
+                                colorX = tx.toInt().toString()
+                                colorY = ty.toInt().toString()
+                            }
+                        }) { Text("画面タップで座標を取る") }
+                        OutlinedTextField(colorHex, { colorHex = it }, label = { Text("目標色  #RRGGBB") })
+                        OutlinedTextField(colorTol, { colorTol = it }, label = { Text("許容差 0-255") })
 
                         Button(onClick = { save() }) { Text("設定を保存") }
                         Button(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("アクセシビリティ設定") }
