@@ -26,6 +26,7 @@ class ClickAccessibilityService : AccessibilityService() {
     private var blockYPercent = 0f
     private var relaunchOnExit = false
     private var resumeClickerAfterBlock = false
+    @Volatile private var clickDuration = 30L
 
     private var timeBlockMs = 60_000L
     private var timeBlockRadius = 250f
@@ -61,6 +62,7 @@ class ClickAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        configureClickDuration(prefs.getLong("clickDuration", 30L))
         configureColorUnblock(
             prefs.getBoolean("colorUnblock", false),
             prefs.getFloat("colorX", 0f),
@@ -68,6 +70,10 @@ class ClickAccessibilityService : AccessibilityService() {
             prefs.getInt("colorTarget", Color.WHITE),
             prefs.getInt("colorTol", 25)
         )
+    }
+
+    fun configureClickDuration(ms: Long) {
+        clickDuration = ms.coerceIn(1L, 1000L)
     }
 
     fun configureAppTrigger(
@@ -156,7 +162,12 @@ class ClickAccessibilityService : AccessibilityService() {
     fun click(x: Float, y: Float) {
         if (isBlocked(x, y)) return
         val path = Path().apply { moveTo(x, y) }
-        dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 30)).build(), null, null)
+        dispatchGesture(
+            GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0, clickDuration))
+                .build(),
+            null, null
+        )
     }
 
     private fun blockBand(ms: Long, yPercent: Float, heightPercent: Float) {
