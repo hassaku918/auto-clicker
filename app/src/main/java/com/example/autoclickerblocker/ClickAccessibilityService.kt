@@ -55,11 +55,11 @@ class ClickAccessibilityService : AccessibilityService() {
     private var blocker: View? = null
     private val handler = Handler(Looper.getMainLooper())
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0x662196F3
+        color = Color.argb(0x66, 0x21, 0x96, 0xF3)
         style = Paint.Style.FILL
     }
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xCC1565C0
+        color = Color.argb(0xCC, 0x15, 0x65, 0xC0)
         style = Paint.Style.STROKE
         strokeWidth = 5f
     }
