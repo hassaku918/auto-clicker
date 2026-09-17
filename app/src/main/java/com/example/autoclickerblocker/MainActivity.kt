@@ -189,9 +189,22 @@ class MainActivity : ComponentActivity() {
                         Text("クリッカー", style = MaterialTheme.typography.titleLarge)
                         OutlinedTextField(interval, { interval = it }, label = { Text("クリック間隔 (ms)") })
                         OutlinedTextField(clickDuration, { clickDuration = it }, label = { Text("タップ時間 (ms)  1-1000") })
-                        OutlinedTextField(randomRadius, { randomRadius = it }, label = { Text("ランダム範囲 半径(px) / 0=固定") })
+                        OutlinedTextField(randomRadius, { randomRadius = it }, label = { Text("追加時の初期ランダム半径 (px)") })
                     }
-                    itemsIndexed(points) { i, p -> Text("マーカー ${i + 1}: (${p.x.toInt()}, ${p.y.toInt()})") }
+                    itemsIndexed(points) { i, p ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("マーカー ${i + 1}: (${p.x.toInt()}, ${p.y.toInt()})")
+                            OutlinedTextField(
+                                value = if (p.randomRadius == 0f) "0" else p.randomRadius.toInt().toString(),
+                                onValueChange = { raw ->
+                                    val r = raw.toFloatOrNull()?.coerceAtLeast(0f) ?: 0f
+                                    points = points.toMutableList().also { it[i] = it[i].copy(randomRadius = r) }
+                                    PointStore.save(prefs, points)
+                                },
+                                label = { Text("この点のランダム半径 (px)  0=固定") }
+                            )
+                        }
+                    }
                     item {
                         HorizontalDivider()
                         Text("🔄 アプリ復帰", style = MaterialTheme.typography.titleLarge)
