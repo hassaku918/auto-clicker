@@ -4,7 +4,9 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.os.Build
@@ -27,6 +29,7 @@ class ClickAccessibilityService : AccessibilityService() {
     private var relaunchOnExit = false
     private var resumeClickerAfterBlock = false
     @Volatile private var clickDuration = 30L
+    @Volatile private var showShield = true
 
     private var timeBlockMs = 60_000L
     private var timeBlockRadius = 250f
@@ -51,6 +54,15 @@ class ClickAccessibilityService : AccessibilityService() {
 
     private var blocker: View? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0x662196F3
+        style = Paint.Style.FILL
+    }
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xCC1565C0
+        style = Paint.Style.STROKE
+        strokeWidth = 5f
+    }
     private val colorTick = object : Runnable {
         override fun run() {
             if (!watchingColor || !colorUnblockEnabled) return
@@ -63,6 +75,7 @@ class ClickAccessibilityService : AccessibilityService() {
         instance = this
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         configureClickDuration(prefs.getLong("clickDuration", 30L))
+        configureShowShield(prefs.getBoolean("showBlockShield", true))
         configureColorUnblock(
             prefs.getBoolean("colorUnblock", false),
             prefs.getFloat("colorX", 0f),
@@ -72,9 +85,8 @@ class ClickAccessibilityService : AccessibilityService() {
         )
     }
 
-    fun configureClickDuration(ms: Long) {
-        clickDuration = ms.coerceIn(1L, 1000L)
-    }
+    fun configureClickDuration(ms: Long) { clickDuration = ms.coerceIn(1L, 1000L) }
+    fun configureShowShield(show: Boolean) { showShield = show }
 
     fun configureAppTrigger(
         enabled: Boolean, target: String, duration: Long, radius: Float,
@@ -174,6 +186,14 @@ class ClickAccessibilityService : AccessibilityService() {
         handler.post {
             unblock()
             val v = object : View(this) {
+                init { setWillNotDraw(false) }
+                override fun onDraw(canvas: Canvas) {
+                    if (!showShield) return
+                    val start = height * (yPercent / 100f)
+                    val end = (start + height * (heightPercent / 100f)).coerceAtMost(height.toFloat())
+                    canvas.drawRect(0f, start, width.toFloat(), end, fillPaint)
+                    canvas.drawRect(0f, start, width.toFloat(), end, linePaint)
+                }
                 override fun onTouchEvent(event: MotionEvent?): Boolean {
                     if (event == null) return true
                     val start = height * (yPercent / 100f)
@@ -195,10 +215,16 @@ class ClickAccessibilityService : AccessibilityService() {
             activeCircleRadius = radius
             blockMode = BlockMode.CIRCLE
             val v = object : View(this) {
+                init { setWillNotDraw(false) }
+                override fun onDraw(canvas: Canvas) {
+                    if (!showShield) return
+                    canvas.drawCircle(width / 2f, height / 2f, radius, fillPaint)
+                    canvas.drawCircle(width / 2f, height / 2f, radius, linePaint)
+                }
                 override fun onTouchEvent(event: MotionEvent?): Boolean {
                     if (event == null) return true
-                    val cx = width / 2f; val cy = height / 2f
-                    val dx = event.x - cx; val dy = event.y - cy
+                    val dx = event.x - width / 2f
+                    val dy = event.y - height / 2f
                     return sqrt(dx * dx + dy * dy) <= radius
                 }
             }
