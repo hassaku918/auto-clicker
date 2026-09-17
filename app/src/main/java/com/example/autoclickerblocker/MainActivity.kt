@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun Screen() {
         var interval by remember { mutableStateOf(prefs.getLong("interval", 500).toString()) }
+        var clickDuration by remember { mutableStateOf(prefs.getLong("clickDuration", 30).toString()) }
         var randomRadius by remember { mutableStateOf(prefs.getFloat("randomRadius", 0f).toString()) }
         var appEnabled by remember { mutableStateOf(prefs.getBoolean("triggerApp", false)) }
         var target by remember { mutableStateOf(prefs.getString("target", "") ?: "") }
@@ -88,6 +89,7 @@ class MainActivity : ComponentActivity() {
 
         fun applyFromPrefs() {
             interval = prefs.getLong("interval", 500).toString()
+            clickDuration = prefs.getLong("clickDuration", 30).toString()
             randomRadius = prefs.getFloat("randomRadius", 0f).toString()
             appEnabled = prefs.getBoolean("triggerApp", false)
             target = prefs.getString("target", "") ?: ""
@@ -115,8 +117,10 @@ class MainActivity : ComponentActivity() {
 
         fun save() {
             val parsedColor = parseColorOrWhite(colorHex)
+            val tapMs = clickDuration.toLongOrNull()?.coerceIn(1, 1000) ?: 30
             prefs.edit()
                 .putLong("interval", interval.toLongOrNull()?.coerceAtLeast(50) ?: 500)
+                .putLong("clickDuration", tapMs)
                 .putFloat("randomRadius", randomRadius.toFloatOrNull()?.coerceAtLeast(0f) ?: 0f)
                 .putBoolean("triggerApp", appEnabled).putString("target", target)
                 .putLong("appBlockDuration", appDuration.toLongOrNull()?.coerceAtLeast(100) ?: 30000)
@@ -139,6 +143,7 @@ class MainActivity : ComponentActivity() {
                 .putInt("colorTol", colorTol.toIntOrNull()?.coerceIn(0, 255) ?: 25)
                 .commit()
             PointStore.save(prefs, points)
+            ClickAccessibilityService.instance?.configureClickDuration(tapMs)
             ClickAccessibilityService.instance?.configureAppTrigger(
                 appEnabled, target, appDuration.toLongOrNull() ?: 30000,
                 appRadius.toFloatOrNull() ?: 0f, topPercent.toFloatOrNull() ?: 76f,
@@ -183,6 +188,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Text("クリッカー", style = MaterialTheme.typography.titleLarge)
                         OutlinedTextField(interval, { interval = it }, label = { Text("クリック間隔 (ms)") })
+                        OutlinedTextField(clickDuration, { clickDuration = it }, label = { Text("タップ時間 (ms)  1-1000") })
                         OutlinedTextField(randomRadius, { randomRadius = it }, label = { Text("ランダム範囲 半径(px) / 0=固定") })
                     }
                     itemsIndexed(points) { i, p -> Text("マーカー ${i + 1}: (${p.x.toInt()}, ${p.y.toInt()})") }
@@ -232,7 +238,6 @@ class MainActivity : ComponentActivity() {
                         }
                         HorizontalDivider()
                         Text("💾 セーブデータ", style = MaterialTheme.typography.titleLarge)
-                        Text("マーカー・間隔・封鎖・色解除まで一緒に保存します。", style = MaterialTheme.typography.bodySmall)
                         OutlinedTextField(slotName, { slotName = it }, label = { Text("セーブ名") })
                         Button(onClick = {
                             save()
