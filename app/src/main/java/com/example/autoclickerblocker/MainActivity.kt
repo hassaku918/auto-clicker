@@ -236,6 +236,7 @@ class MainActivity : ComponentActivity() {
                                 startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
                             }) { Text("正確なアラームの権限設定") }
                         }
+                        KeepAliveButtons(this@MainActivity)
                         HorizontalDivider()
                         Text("💾 セーブデータ", style = MaterialTheme.typography.titleLarge)
                         OutlinedTextField(slotName, { slotName = it }, label = { Text("セーブ名") })
