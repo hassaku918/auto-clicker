@@ -7,7 +7,7 @@ object SettingSlots {
     private const val SRC = "settings"
 
     private val KEYS = listOf(
-        "interval", "clickDuration", "randomRadius", "points",
+        "interval", "clickDuration", "randomRadius", "points", "showBlockShield",
         "triggerApp", "target", "appBlockDuration", "appBlockRadius",
         "blockTopPercent", "blockYPercent", "relaunchOnExit", "resumeClickerAfterBlock",
         "triggerTime", "hour", "minute", "timeBlockDuration", "timeBlockRadius",
