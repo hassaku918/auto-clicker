@@ -9,8 +9,9 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Display
-import android.view.MotionEvent
+import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -25,6 +26,8 @@ class BlockAccessibilityService : AccessibilityService() {
     private var blocker: View? = null
     private var watching = false
     private var lastPkg = ""
+    @Volatile private var shotPending = false
+    private var lastShotAt = 0L
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(0x88, 0x21, 0x96, 0xF3)
@@ -39,11 +42,10 @@ class BlockAccessibilityService : AccessibilityService() {
     private val colorTick = object : Runnable {
         override fun run() {
             if (!watching) return
-            if (colorMatched()) {
-                unblock()
-                return
-            }
-            handler.postDelayed(this, 250L)
+            sampleColor()
+            // ScreenGrab is cheap; screenshot path is throttled inside sampleColor
+            val delay = if (ScreenGrab.ready) 400L else 1200L
+            handler.postDelayed(this, delay)
         }
     }
 
@@ -76,69 +78,89 @@ class BlockAccessibilityService : AccessibilityService() {
         val widthPct = p.getFloat("widthPercent", 100f).coerceIn(1f, 100f)
         handler.post {
             unblockInternal()
+            val dm = resources.displayMetrics
+            val screenW = dm.widthPixels
+            val screenH = dm.heightPixels
+            val boxL = (screenW * leftPct / 100f).toInt().coerceIn(0, screenW - 1)
+            val boxT = (screenH * topPct / 100f).toInt().coerceIn(0, screenH - 1)
+            val boxW = (screenW * widthPct / 100f).toInt().coerceAtLeast(1)
+                .coerceAtMost(screenW - boxL)
+            val boxH = (screenH * heightPct / 100f).toInt().coerceAtLeast(1)
+                .coerceAtMost(screenH - boxT)
+
+            // Only cover the blocked rectangle so the rest of the screen stays responsive
             val v = object : View(this) {
                 init { setWillNotDraw(false) }
                 override fun onDraw(canvas: Canvas) {
-                    val vh = height.toFloat()
-                    val vw = width.toFloat()
-                    val t = vh * (topPct / 100f)
-                    val b = (t + vh * (heightPct / 100f)).coerceAtMost(vh)
-                    val l = vw * (leftPct / 100f)
-                    val r = (l + vw * (widthPct / 100f)).coerceAtMost(vw)
-                    canvas.drawRect(l, t, r, b, fillPaint)
-                    canvas.drawRect(l, t, r, b, linePaint)
+                    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fillPaint)
+                    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), linePaint)
                 }
-                override fun onTouchEvent(event: MotionEvent?): Boolean {
-                    if (event == null) return true
-                    val vh = height.toFloat()
-                    val vw = width.toFloat()
-                    val t = vh * (topPct / 100f)
-                    val b = (t + vh * (heightPct / 100f)).coerceAtMost(vh)
-                    val l = vw * (leftPct / 100f)
-                    val r = (l + vw * (widthPct / 100f)).coerceAtMost(vw)
-                    return event.x in l..r && event.y in t..b
-                }
+                // Consume all touches inside this small window
+                override fun onTouchEvent(event: android.view.MotionEvent?) = true
             }
             val lp = WindowManager.LayoutParams(
-                -1, -1,
+                boxW, boxH,
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT
             )
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.x = boxL
+            lp.y = boxT
             runCatching {
                 (getSystemService(WINDOW_SERVICE) as WindowManager).addView(v, lp)
                 blocker = v
                 watching = true
+                shotPending = false
                 handler.removeCallbacks(colorTick)
                 handler.post(colorTick)
             }
         }
     }
 
-    private fun colorMatched(): Boolean {
+    private fun sampleColor() {
         val p = prefs()
         val x = p.getFloat("colorX", 0f).toInt()
         val y = p.getFloat("colorY", 0f).toInt()
         val target = p.getInt("colorTarget", Color.WHITE)
         val tol = p.getInt("colorTol", 25)
-        ScreenGrab.pixel(x, y)?.let { return near(it, target, tol) }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+
+        // Prefer continuous MediaProjection buffer (Android 9 friendly, low cost)
+        ScreenGrab.pixel(x, y)?.let {
+            if (near(it, target, tol)) unblock()
+            return
+        }
+
+        // Fallback: takeScreenshot is heavy — at most once per 1.5s, never stack
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val now = SystemClock.elapsedRealtime()
+        if (shotPending || now - lastShotAt < 1500L) return
+        shotPending = true
+        lastShotAt = now
         takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
             override fun onSuccess(screenshot: ScreenshotResult) {
-                val hb = screenshot.hardwareBuffer
-                val bmp = Bitmap.wrapHardwareBuffer(hb, screenshot.colorSpace) ?: return
-                val sw = if (bmp.config == Bitmap.Config.HARDWARE) bmp.copy(Bitmap.Config.ARGB_8888, false) else bmp
-                val px = x.coerceIn(0, (sw.width - 1).coerceAtLeast(0))
-                val py = y.coerceIn(0, (sw.height - 1).coerceAtLeast(0))
-                val pixel = runCatching { sw.getPixel(px, py) }.getOrNull()
-                if (sw !== bmp) sw.recycle()
-                hb.close()
-                if (pixel != null && near(pixel, target, tol)) unblock()
+                try {
+                    val hb = screenshot.hardwareBuffer
+                    val bmp = Bitmap.wrapHardwareBuffer(hb, screenshot.colorSpace) ?: return
+                    val sw = if (bmp.config == Bitmap.Config.HARDWARE) {
+                        bmp.copy(Bitmap.Config.ARGB_8888, false)
+                    } else bmp
+                    val px = x.coerceIn(0, (sw.width - 1).coerceAtLeast(0))
+                    val py = y.coerceIn(0, (sw.height - 1).coerceAtLeast(0))
+                    val pixel = runCatching { sw.getPixel(px, py) }.getOrNull()
+                    if (sw !== bmp) sw.recycle()
+                    hb.close()
+                    if (pixel != null && near(pixel, target, tol)) unblock()
+                } finally {
+                    shotPending = false
+                }
             }
-            override fun onFailure(errorCode: Int) {}
+            override fun onFailure(errorCode: Int) {
+                shotPending = false
+            }
         })
-        return false
     }
 
     private fun near(a: Int, b: Int, tol: Int): Boolean {
@@ -153,6 +175,7 @@ class BlockAccessibilityService : AccessibilityService() {
 
     private fun unblockInternal() {
         watching = false
+        shotPending = false
         handler.removeCallbacks(colorTick)
         blocker?.let {
             runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it) }
