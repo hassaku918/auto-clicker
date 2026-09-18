@@ -25,11 +25,13 @@ class AutomationService : Service() {
             10,
             NotificationCompat.Builder(this, "clicker")
                 .setContentTitle("AutoClickerBlocker")
-                .setContentText("自動クリック実行中（停止するまで）")
+                .setContentText("実行中 — 通知の停止 or 画面の赤い停止ボタン")
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .addAction(android.R.drawable.ic_media_pause, "停止", stop)
+                .setOngoing(true)
                 .build()
         )
+        FloatingStopOverlay.show(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -77,13 +79,20 @@ class AutomationService : Service() {
         running = false
         worker?.interrupt()
         worker = null
+        FloatingStopOverlay.hide(this)
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?) = null
 
     companion object {
-        fun startClicker(c: Context) = c.startForegroundService(Intent(c, AutomationService::class.java))
-        fun stop(c: Context) = c.stopService(Intent(c, AutomationService::class.java))
+        fun startClicker(c: Context) {
+            c.startForegroundService(Intent(c, AutomationService::class.java))
+        }
+        fun stop(c: Context) {
+            c.startService(Intent(c, AutomationService::class.java).setAction("STOP"))
+            c.stopService(Intent(c, AutomationService::class.java))
+            FloatingStopOverlay.hide(c)
+        }
     }
 }
