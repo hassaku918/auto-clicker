@@ -14,6 +14,8 @@ import android.os.Handler
 import android.os.Looper
 import android.view.*
 import android.view.accessibility.AccessibilityEvent
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -28,7 +30,7 @@ class ClickAccessibilityService : AccessibilityService() {
     private var blockYPercent = 0f
     private var relaunchOnExit = false
     private var resumeClickerAfterBlock = false
-    @Volatile private var clickDuration = 30L
+    @Volatile private var clickDuration = 16L
     @Volatile private var showShield = true
 
     private var timeBlockMs = 60_000L
@@ -74,7 +76,7 @@ class ClickAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-        configureClickDuration(prefs.getLong("clickDuration", 30L))
+        configureClickDuration(prefs.getLong("clickDuration", 16L))
         configureShowShield(prefs.getBoolean("showBlockShield", true))
         configureColorUnblock(
             prefs.getBoolean("colorUnblock", false),
@@ -171,15 +173,31 @@ class ClickAccessibilityService : AccessibilityService() {
         else blockCircle(ms, radius.coerceAtLeast(1f))
     }
 
-    fun click(x: Float, y: Float) {
-        if (isBlocked(x, y)) return
+    /** Dispatches a tap; blocks the worker briefly until the gesture finishes so rapid clicks are not dropped. */
+    fun click(x: Float, y: Float): Boolean {
+        if (isBlocked(x, y)) return false
         val path = Path().apply { moveTo(x, y) }
-        dispatchGesture(
-            GestureDescription.Builder()
-                .addStroke(GestureDescription.StrokeDescription(path, 0, clickDuration))
-                .build(),
-            null, null
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, clickDuration))
+            .build()
+        val latch = CountDownLatch(1)
+        val accepted = dispatchGesture(
+            gesture,
+            object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    latch.countDown()
+                }
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    latch.countDown()
+                }
+            },
+            null
         )
+        if (!accepted) return false
+        runCatching {
+            latch.await(clickDuration + 80L, TimeUnit.MILLISECONDS)
+        }
+        return true
     }
 
     private fun blockBand(ms: Long, yPercent: Float, heightPercent: Float) {
