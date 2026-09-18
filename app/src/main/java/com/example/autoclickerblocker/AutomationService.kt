@@ -9,7 +9,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 class AutomationService : Service() {
-    private var running = false
+    @Volatile private var running = false
     private var worker: Thread? = null
 
     override fun onCreate() {
@@ -43,7 +43,8 @@ class AutomationService : Service() {
             worker = Thread {
                 var i = 0
                 while (running) {
-                    val interval = prefs.getLong("interval", 500L).coerceAtLeast(50)
+                    val started = SystemClock.elapsedRealtime()
+                    val interval = prefs.getLong("interval", 500L).coerceAtLeast(20L)
                     val points = PointStore.load(prefs)
                     if (points.isNotEmpty()) {
                         val p = points[i % points.size]
@@ -57,10 +58,14 @@ class AutomationService : Service() {
                         }
                         i++
                     }
-                    try {
-                        Thread.sleep(interval)
-                    } catch (_: InterruptedException) {
-                        break
+                    val elapsed = SystemClock.elapsedRealtime() - started
+                    val sleepFor = interval - elapsed
+                    if (sleepFor > 0) {
+                        try {
+                            Thread.sleep(sleepFor)
+                        } catch (_: InterruptedException) {
+                            break
+                        }
                     }
                 }
             }.also { it.start() }
