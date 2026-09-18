@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">AutoClickerBlocker</string>
+    <string name="accessibility_service_description">他アプリ上でも自動タップ・画面封鎖を行います。ユーザー補助をオンにしてください。</string>
 </resources>
