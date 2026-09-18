@@ -3,7 +3,6 @@ package com.example.autoclickerblocker
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.*
 import android.widget.*
@@ -31,15 +30,14 @@ object FloatingPanel {
             setPadding(0, 8, 0, 2)
         }
 
-        fun field(key: String, def: String, number: Boolean = false): EditText {
-            val et = EditText(app).apply {
-                setText(prefs.getString(key, null) ?: def)
+        fun field(def: String, number: Boolean = false): EditText {
+            return EditText(app).apply {
+                setText(def)
                 setTextColor(Color.WHITE)
                 setHintTextColor(Color.GRAY)
                 setBackgroundColor(Color.argb(80, 255, 255, 255))
                 if (number) inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             }
-            return et
         }
 
         val enabled = CheckBox(app).apply {
@@ -47,21 +45,14 @@ object FloatingPanel {
             setTextColor(Color.WHITE)
             isChecked = prefs.getBoolean("enabled", false)
         }
-        val target = field("target", "")
-        val top = field("topPercent", prefs.getFloat("topPercent", 0f).toString(), true)
-        val height = field("heightPercent", prefs.getFloat("heightPercent", 20f).toString(), true)
-        val left = field("leftPercent", prefs.getFloat("leftPercent", 0f).toString(), true)
-        val width = field("widthPercent", prefs.getFloat("widthPercent", 100f).toString(), true)
-        val colorX = field("colorX", prefs.getFloat("colorX", 0f).toString(), true)
-        val colorY = field("colorY", prefs.getFloat("colorY", 0f).toString(), true)
-        val colorHex = field("colorHex", String.format("#%06X", 0xFFFFFF and prefs.getInt("colorTarget", Color.WHITE)))
-        val colorTol = field("colorTol", prefs.getInt("colorTol", 25).toString(), true)
+        val target = field(prefs.getString("target", "") ?: "")
+        val top = field(prefs.getFloat("topPercent", 0f).toString(), true)
+        val height = field(prefs.getFloat("heightPercent", 20f).toString(), true)
+        val left = field(prefs.getFloat("leftPercent", 0f).toString(), true)
+        val width = field(prefs.getFloat("widthPercent", 100f).toString(), true)
+        val duration = field(prefs.getLong("blockDurationMs", 30_000L).toString(), true)
 
         fun save() {
-            val hex = colorHex.text.toString().trim().removePrefix("#")
-            val color = runCatching {
-                Color.parseColor("#" + hex.padStart(6, '0').take(6))
-            }.getOrDefault(Color.WHITE)
             prefs.edit()
                 .putBoolean("enabled", enabled.isChecked)
                 .putString("target", target.text.toString().trim())
@@ -69,10 +60,7 @@ object FloatingPanel {
                 .putFloat("heightPercent", height.text.toString().toFloatOrNull() ?: 20f)
                 .putFloat("leftPercent", left.text.toString().toFloatOrNull() ?: 0f)
                 .putFloat("widthPercent", width.text.toString().toFloatOrNull() ?: 100f)
-                .putFloat("colorX", colorX.text.toString().toFloatOrNull() ?: 0f)
-                .putFloat("colorY", colorY.text.toString().toFloatOrNull() ?: 0f)
-                .putInt("colorTarget", color)
-                .putInt("colorTol", colorTol.text.toString().toIntOrNull() ?: 25)
+                .putLong("blockDurationMs", duration.text.toString().toLongOrNull()?.coerceAtLeast(100L) ?: 30_000L)
                 .commit()
             Toast.makeText(app, "保存した", Toast.LENGTH_SHORT).show()
         }
@@ -93,14 +81,8 @@ object FloatingPanel {
         box.addView(left)
         box.addView(label("封鎖 幅 %"))
         box.addView(width)
-        box.addView(label("解除色 X (px)"))
-        box.addView(colorX)
-        box.addView(label("解除色 Y (px)"))
-        box.addView(colorY)
-        box.addView(label("目標色 #RRGGBB"))
-        box.addView(colorHex)
-        box.addView(label("色の許容差 0-255"))
-        box.addView(colorTol)
+        box.addView(label("封鎖時間 (ms)  経過で自動解除"))
+        box.addView(duration)
 
         val row = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(Button(app).apply {
@@ -128,7 +110,7 @@ object FloatingPanel {
 
         val lp = WindowManager.LayoutParams(
             (app.resources.displayMetrics.widthPixels * 0.9f).toInt(),
-            (app.resources.displayMetrics.heightPixels * 0.7f).toInt(),
+            (app.resources.displayMetrics.heightPixels * 0.55f).toInt(),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
