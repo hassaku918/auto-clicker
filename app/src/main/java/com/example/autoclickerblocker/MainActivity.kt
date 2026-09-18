@@ -1,14 +1,11 @@
 package com.example.autoclickerblocker
 
-import android.app.Activity
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -16,17 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
-
-    private val captureLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            val i = Intent(this, ProjectionService::class.java)
-            i.putExtra(ProjectionService.EXTRA_CODE, result.resultCode)
-            i.putExtra(ProjectionService.EXTRA_DATA, result.data)
-            startForegroundService(i)
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,8 +27,8 @@ class MainActivity : ComponentActivity() {
                 Modifier.padding(pad).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("特定アプリを開くと長方形で画面封鎖し、指定座標の色で解除します。")
-                Text("1. ユーザー補助をオン\n2. オーバーレイを許可\n3. （Android 9）画面取得を許可\n4. フローティング設定を開く")
+                Text("特定アプリを開くと長方形で画面封鎖し、指定時間後に自動解除します。")
+                Text("1. ユーザー補助をオン\n2. オーバーレイを許可\n3. フローティング設定で package・範囲・時間を保存")
                 Button(onClick = {
                     startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }) { Text("ユーザー補助を開く") }
@@ -54,10 +40,6 @@ class MainActivity : ComponentActivity() {
                         )
                     )
                 }) { Text("オーバーレイ権限") }
-                Button(onClick = {
-                    val mpm = getSystemService(MediaProjectionManager::class.java)
-                    captureLauncher.launch(mpm.createScreenCaptureIntent())
-                }) { Text("画面取得を許可（色判定用）") }
                 Button(onClick = {
                     if (!Settings.canDrawOverlays(this@MainActivity)) {
                         startActivity(
