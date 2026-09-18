@@ -49,11 +49,6 @@ class BlockAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
-        reload()
-    }
-
-    fun reload() {
-        // prefs are read on each event / block
     }
 
     private fun prefs() = getSharedPreferences("settings", MODE_PRIVATE)
@@ -75,28 +70,32 @@ class BlockAccessibilityService : AccessibilityService() {
 
     fun startBlock() {
         val p = prefs()
-        val top = p.getFloat("topPercent", 0f).coerceIn(0f, 100f)
-        val height = p.getFloat("heightPercent", 20f).coerceIn(1f, 100f)
-        val left = p.getFloat("leftPercent", 0f).coerceIn(0f, 100f)
-        val width = p.getFloat("widthPercent", 100f).coerceIn(1f, 100f)
+        val topPct = p.getFloat("topPercent", 0f).coerceIn(0f, 100f)
+        val heightPct = p.getFloat("heightPercent", 20f).coerceIn(1f, 100f)
+        val leftPct = p.getFloat("leftPercent", 0f).coerceIn(0f, 100f)
+        val widthPct = p.getFloat("widthPercent", 100f).coerceIn(1f, 100f)
         handler.post {
             unblockInternal()
             val v = object : View(this) {
                 init { setWillNotDraw(false) }
                 override fun onDraw(canvas: Canvas) {
-                    val t = height * (top / 100f)
-                    val b = (t + height * (height / 100f)).coerceAtMost(height.toFloat())
-                    val l = width * (left / 100f)
-                    val r = (l + width * (width / 100f)).coerceAtMost(width.toFloat())
+                    val vh = height.toFloat()
+                    val vw = width.toFloat()
+                    val t = vh * (topPct / 100f)
+                    val b = (t + vh * (heightPct / 100f)).coerceAtMost(vh)
+                    val l = vw * (leftPct / 100f)
+                    val r = (l + vw * (widthPct / 100f)).coerceAtMost(vw)
                     canvas.drawRect(l, t, r, b, fillPaint)
                     canvas.drawRect(l, t, r, b, linePaint)
                 }
                 override fun onTouchEvent(event: MotionEvent?): Boolean {
                     if (event == null) return true
-                    val t = height * (top / 100f)
-                    val b = (t + height * (height / 100f)).coerceAtMost(height.toFloat())
-                    val l = width * (left / 100f)
-                    val r = (l + width * (width / 100f)).coerceAtMost(width.toFloat())
+                    val vh = height.toFloat()
+                    val vw = width.toFloat()
+                    val t = vh * (topPct / 100f)
+                    val b = (t + vh * (heightPct / 100f)).coerceAtMost(vh)
+                    val l = vw * (leftPct / 100f)
+                    val r = (l + vw * (widthPct / 100f)).coerceAtMost(vw)
                     return event.x in l..r && event.y in t..b
                 }
             }
@@ -125,7 +124,6 @@ class BlockAccessibilityService : AccessibilityService() {
         val tol = p.getInt("colorTol", 25)
         ScreenGrab.pixel(x, y)?.let { return near(it, target, tol) }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
-        // async screenshot path: fire and check next tick
         takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
             override fun onSuccess(screenshot: ScreenshotResult) {
                 val hb = screenshot.hardwareBuffer
