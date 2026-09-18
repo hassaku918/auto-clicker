@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun Screen() {
         var interval by remember { mutableStateOf(prefs.getLong("interval", 500).toString()) }
-        var clickDuration by remember { mutableStateOf(prefs.getLong("clickDuration", 30).toString()) }
+        var clickDuration by remember { mutableStateOf(prefs.getLong("clickDuration", 16).toString()) }
         var randomRadius by remember { mutableStateOf(prefs.getFloat("randomRadius", 0f).toString()) }
         var appEnabled by remember { mutableStateOf(prefs.getBoolean("triggerApp", false)) }
         var target by remember { mutableStateOf(prefs.getString("target", "") ?: "") }
@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
 
         fun applyFromPrefs() {
             interval = prefs.getLong("interval", 500).toString()
-            clickDuration = prefs.getLong("clickDuration", 30).toString()
+            clickDuration = prefs.getLong("clickDuration", 16).toString()
             randomRadius = prefs.getFloat("randomRadius", 0f).toString()
             appEnabled = prefs.getBoolean("triggerApp", false)
             target = prefs.getString("target", "") ?: ""
@@ -117,9 +117,9 @@ class MainActivity : ComponentActivity() {
 
         fun save() {
             val parsedColor = parseColorOrWhite(colorHex)
-            val tapMs = clickDuration.toLongOrNull()?.coerceIn(1, 1000) ?: 30
+            val tapMs = clickDuration.toLongOrNull()?.coerceIn(1, 1000) ?: 16
             prefs.edit()
-                .putLong("interval", interval.toLongOrNull()?.coerceAtLeast(50) ?: 500)
+                .putLong("interval", interval.toLongOrNull()?.coerceAtLeast(20) ?: 500)
                 .putLong("clickDuration", tapMs)
                 .putFloat("randomRadius", randomRadius.toFloatOrNull()?.coerceAtLeast(0f) ?: 0f)
                 .putBoolean("triggerApp", appEnabled).putString("target", target)
@@ -164,6 +164,21 @@ class MainActivity : ComponentActivity() {
             Box(Modifier.padding(pad)) {
                 LazyColumn(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(
+                                onClick = { save(); AutomationService.startClicker(this@MainActivity) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("▶ 開始") }
+                            Button(
+                                onClick = { AutomationService.stop(this@MainActivity) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error
+                                )
+                            ) { Text("■ 停止") }
+                        }
+                        Text("実行中は画面右上の赤い「停止」も使えます。通知からも停止できます。",
+                            style = MaterialTheme.typography.bodySmall)
                         Button(onClick = { menuOpen = true }) { Text("☰ メニュー") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             DropdownMenuItem(text = { Text("クリッカー起動") }, onClick = {
@@ -172,7 +187,7 @@ class MainActivity : ComponentActivity() {
                             DropdownMenuItem(text = { Text("クリッカー停止") }, onClick = {
                                 AutomationService.stop(this@MainActivity); menuOpen = false
                             })
-                            DropdownMenuItem(text = { Text("マーカー追加（画面をタップして配置）") }, onClick = {
+                            DropdownMenuItem(text = { Text("マーカー追加（連続タップ）") }, onClick = {
                                 menuOpen = false
                                 RegisterOverlay.show(this@MainActivity) { tx, ty ->
                                     points = points + ClickPoint(tx, ty, randomRadius.toFloatOrNull() ?: 0f)
